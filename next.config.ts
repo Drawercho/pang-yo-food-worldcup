@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Cloudflare Pages (OpenNext) 배포용
+  output: "export",   // 정적 빌드 → Cloudflare Pages 직접 배포
+  trailingSlash: true,
 };
 
 export default nextConfig;
