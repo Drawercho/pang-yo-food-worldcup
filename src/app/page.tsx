@@ -1,12 +1,18 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useTheme } from '@/components/ThemeProvider'
 import { supabase, type Restaurant } from '@/lib/supabase'
 
 type RoundSize = 4 | 8 | 16
 type GameState = 'intro' | 'loading' | 'playing' | 'result'
 type CardState = 'idle' | 'winner' | 'loser'
+
+const CATEGORIES = [
+  { key: '점심', emoji: '🍱', label: '점심' },
+  { key: '회식', emoji: '🍻', label: '회식' },
+  { key: '디저트', emoji: '🍰', label: '디저트' },
+]
 
 const ROUND_OPTIONS: { size: RoundSize; label: string; desc: string }[] = [
   { size: 4,  label: '4강',  desc: '4개 맛집, 빠르게!' },
@@ -32,7 +38,6 @@ function getRoundName(remaining: number): string {
 }
 
 function getTotalMatches(roundSize: RoundSize): number {
-  // 16강: 8+4+2+1=15, 8강: 4+2+1=7, 4강: 2+1=3
   return roundSize - 1
 }
 
@@ -40,7 +45,6 @@ function getCompletedMatches(roundSize: RoundSize, totalInRound: number, current
   const prevMap16: Record<number, number> = { 16: 0, 8: 8, 4: 12, 2: 14 }
   const prevMap8: Record<number, number>  = { 8: 0, 4: 4, 2: 6 }
   const prevMap4: Record<number, number>  = { 4: 0, 2: 2 }
-
   const map = roundSize === 16 ? prevMap16 : roundSize === 8 ? prevMap8 : prevMap4
   return (map[totalInRound] ?? 0) + currentMatch - 1
 }
@@ -85,7 +89,14 @@ function RestaurantCard({
               ? 'bg-white/30 text-white'
               : 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
           }`}>
-            📍 {restaurant.location}
+            📍 {restaurant.location ?? '판교'}
+          </span>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+            state === 'winner'
+              ? 'bg-white/20 text-white'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+          }`}>
+            {CATEGORIES.find(c => c.key === restaurant.category)?.emoji} {restaurant.category}
           </span>
         </div>
         {restaurant.review && (
@@ -104,6 +115,9 @@ export default function Home() {
   const { theme, toggle } = useTheme()
 
   const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([])
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
+    new Set(['점심', '회식', '디저트'])
+  )
   const [gameState, setGameState] = useState<GameState>('intro')
   const [roundSize, setRoundSize] = useState<RoundSize>(16)
   const [contestants, setContestants] = useState<Restaurant[]>([])
@@ -113,7 +127,13 @@ export default function Home() {
   const [selected, setSelected] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Supabase에서 점심/회식/디저트 전체 로드
+  // 선택된 카테고리에 맞는 맛집 필터링
+  const filteredRestaurants = useMemo(
+    () => allRestaurants.filter(r => selectedCategories.has(r.category)),
+    [allRestaurants, selectedCategories]
+  )
+
+  // Supabase에서 전체 로드
   useEffect(() => {
     supabase
       .from('restaurants')
@@ -128,6 +148,20 @@ export default function Home() {
       })
   }, [])
 
+  const toggleCategory = useCallback((cat: string) => {
+    setSelectedCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) {
+        if (next.size === 1) return prev // 최소 1개는 선택 유지
+        next.delete(cat)
+      } else {
+        next.add(cat)
+      }
+      return next
+    })
+    setError(null)
+  }, [])
+
   const totalInRound = contestants.length
   const matchesInRound = totalInRound / 2
   const currentMatch = Math.floor(currentIndex / 2) + 1
@@ -136,14 +170,13 @@ export default function Home() {
   const progress = totalMatches > 0 ? (completedMatches / totalMatches) * 100 : 0
 
   const startGame = useCallback((size: RoundSize) => {
-    if (allRestaurants.length < size) {
-      setError(`맛집이 ${size}개 이상 필요합니다. (현재 ${allRestaurants.length}개)`)
+    if (filteredRestaurants.length < size) {
+      setError(`선택한 카테고리에 맛집이 ${size}개 이상 필요합니다. (현재 ${filteredRestaurants.length}개)`)
       return
     }
     setGameState('loading')
     setTimeout(() => {
-      // 전체 목록에서 랜덤으로 size개 추출
-      const shuffled = shuffle(allRestaurants).slice(0, size)
+      const shuffled = shuffle(filteredRestaurants).slice(0, size)
       setRoundSize(size)
       setContestants(shuffled)
       setCurrentIndex(0)
@@ -153,7 +186,7 @@ export default function Home() {
       setError(null)
       setGameState('playing')
     }, 300)
-  }, [allRestaurants])
+  }, [filteredRestaurants])
 
   const handleSelect = useCallback((winner: Restaurant) => {
     if (selected !== null) return
@@ -183,6 +216,15 @@ export default function Home() {
   const left = contestants[currentIndex]
   const right = contestants[currentIndex + 1]
 
+  // 카테고리별 개수
+  const countByCategory = useMemo(() => {
+    const map: Record<string, number> = {}
+    allRestaurants.forEach(r => {
+      map[r.category] = (map[r.category] ?? 0) + 1
+    })
+    return map
+  }, [allRestaurants])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 transition-colors duration-300">
 
@@ -210,39 +252,70 @@ export default function Home() {
 
         {/* ── 시작 화면 ── */}
         {gameState === 'intro' && (
-          <div className="text-center mt-12 space-y-8 max-w-lg w-full">
+          <div className="text-center mt-10 space-y-7 max-w-lg w-full">
             <div className="space-y-3">
               <div className="text-7xl">🏆</div>
               <h1 className="text-4xl font-extrabold text-gray-800 dark:text-gray-100">
                 판교 맛집 월드컵
               </h1>
               <p className="text-base text-gray-400 dark:text-gray-500">
-                검증된 판교 맛집 {allRestaurants.length > 0 ? allRestaurants.length : '…'}곳 중<br />
-                랜덤으로 뽑아 최고를 가려보세요!
+                랜덤으로 뽑아 최고의 판교 맛집을 가려보세요!
+              </p>
+            </div>
+
+            {/* 카테고리 선택 */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">카테고리 선택</p>
+              <div className="grid grid-cols-3 gap-3">
+                {CATEGORIES.map(({ key, emoji, label }) => {
+                  const isOn = selectedCategories.has(key)
+                  const count = countByCategory[key] ?? 0
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => toggleCategory(key)}
+                      className={[
+                        'flex flex-col items-center gap-1 p-4 rounded-2xl border-2 font-bold transition-all duration-200',
+                        isOn
+                          ? 'bg-orange-500 border-orange-500 text-white shadow-md scale-105'
+                          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-orange-300',
+                      ].join(' ')}
+                    >
+                      <span className="text-2xl">{emoji}</span>
+                      <span className="text-sm">{label}</span>
+                      <span className={`text-xs font-normal ${isOn ? 'text-white/80' : 'text-gray-400'}`}>
+                        {count}개
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className={`text-xs transition-colors ${filteredRestaurants.length > 0 ? 'text-gray-400 dark:text-gray-500' : 'text-red-400'}`}>
+                선택된 맛집 총 <span className="font-bold text-orange-500">{filteredRestaurants.length}개</span>
               </p>
             </div>
 
             {/* 라운드 선택 */}
             <div className="space-y-3">
-              <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">라운드를 선택하세요</p>
+              <p className="text-sm font-semibold text-gray-600 dark:text-gray-400">라운드 선택</p>
               <div className="grid grid-cols-3 gap-3">
                 {ROUND_OPTIONS.map(({ size, label, desc }) => {
-                  const disabled = allRestaurants.length < size
+                  const disabled = filteredRestaurants.length < size || allRestaurants.length === 0
                   return (
                     <button
                       key={size}
                       onClick={() => startGame(size)}
-                      disabled={disabled || allRestaurants.length === 0}
+                      disabled={disabled}
                       className={[
                         'flex flex-col items-center gap-1 p-4 rounded-2xl border-2 font-bold transition-all duration-200',
                         disabled
-                          ? 'border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                          ? 'border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 cursor-not-allowed bg-white dark:bg-gray-800'
                           : 'border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 bg-white dark:bg-gray-800 hover:bg-orange-500 hover:text-white hover:border-orange-500 hover:scale-105 shadow-sm hover:shadow-lg cursor-pointer',
                       ].join(' ')}
                     >
                       <span className="text-2xl">{label}</span>
                       <span className="text-xs font-normal opacity-75">{desc}</span>
-                      {disabled && (
+                      {disabled && allRestaurants.length > 0 && (
                         <span className="text-xs font-normal text-red-400">({size}개 필요)</span>
                       )}
                     </button>
@@ -250,20 +323,6 @@ export default function Home() {
                 })}
               </div>
             </div>
-
-            {/* 참가 맛집 미리보기 */}
-            {allRestaurants.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs text-gray-400 dark:text-gray-600">참가 맛집 (매번 랜덤 추출)</p>
-                <div className="grid grid-cols-4 gap-2">
-                  {allRestaurants.map(r => (
-                    <div key={r.id} className="bg-white dark:bg-gray-800 rounded-lg p-2 text-center text-xs text-gray-600 dark:text-gray-400 shadow-sm truncate">
-                      {r.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {allRestaurants.length === 0 && !error && (
               <p className="text-gray-400 dark:text-gray-600 text-sm animate-pulse">맛집 불러오는 중...</p>
@@ -342,7 +401,10 @@ export default function Home() {
                   {champion.genre}
                 </span>
                 <span className="px-3 py-1 bg-amber-500 text-white text-sm rounded-full font-medium">
-                  📍 {champion.location}
+                  📍 {champion.location ?? '판교'}
+                </span>
+                <span className="px-3 py-1 bg-gray-400 text-white text-sm rounded-full font-medium">
+                  {CATEGORIES.find(c => c.key === champion.category)?.emoji} {champion.category}
                 </span>
               </div>
               {champion.review && (
@@ -362,7 +424,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* 다시 하기 - 라운드 선택 */}
             <div className="space-y-3">
               <p className="text-sm text-gray-500 dark:text-gray-400">한 번 더?</p>
               <div className="flex justify-center gap-3">
@@ -370,7 +431,7 @@ export default function Home() {
                   <button
                     key={size}
                     onClick={() => startGame(size)}
-                    disabled={allRestaurants.length < size}
+                    disabled={filteredRestaurants.length < size}
                     className="px-5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow hover:shadow-lg hover:scale-105 transition-all duration-200 text-sm"
                   >
                     🔄 {label}
