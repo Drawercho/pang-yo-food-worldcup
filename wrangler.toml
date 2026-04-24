@@ -1,0 +1,8 @@
+name = "pangyo-food-worldcup"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".open-next/assets"
+
+[vars]
+NEXT_PUBLIC_SUPABASE_URL = "https://nqivyodfnwdwwvayipun.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xaXZ5b2Rmbndkd3d2YXlpcHVuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMDgzODQsImV4cCI6MjA5MjU4NDM4NH0.lA6zhCNMKl4a9WO6_NMRGH2pIL9O9gRNFk_duimJiCE"
