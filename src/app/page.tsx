@@ -113,12 +113,12 @@ export default function Home() {
   const [selected, setSelected] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Supabase에서 점심 맛집 전체 로드 (검증 여부 무관)
+  // Supabase에서 점심/회식/디저트 전체 로드
   useEffect(() => {
     supabase
       .from('restaurants')
       .select('*')
-      .eq('category', '점심')
+      .in('category', ['점심', '회식', '디저트'])
       .then(({ data, error }) => {
         if (error) {
           setError('맛집 데이터를 불러오지 못했습니다.')
